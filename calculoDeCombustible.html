@@ -114,15 +114,16 @@
         }
 
          //Datos de calibración
-        // var vel_calibracion_consumo = 60;
+        var vel_calibracion_consumo_defecto = 60;
         var vel_caida_calibracion = 0;
         var velocidad_calibracion_anterior = 0;
         // var revoluciones_motor = 1200;
         var revoluciones_motor=1800-((motor["rpm_a_potencia_maxima"]-500)/2)
+
         console.log("revoluciones promedio motor: "+revoluciones_motor)
 
         var variables_calibracion={
-            'velocidad':60,
+            'velocidad':vel_calibracion_consumo_defecto,
             'velocidad_anterior':velocidad_calibracion_anterior,
             // 'revoluciones_motor':1200
             'revoluciones_motor':revoluciones_motor
@@ -154,8 +155,10 @@
     if (esAsignable) {
             for (let i = 0; i < pendientes_elevacion.length; i++) {
                 // revoluciones_motor-=100;
-                resultados_consumo_temporal = [];
+                resultados_consumo_temporal = [];                
                 console.log("ITERACION: "+i)
+                variables_calibracion['velocidad']=60;
+                console.log(variables_calibracion['velocidad'])
                 for (let j = 0; j < 100; j++) {
                     // vel_calibracion_consumo=200;
                     // console.log("Velocidad de calibracion inicial: "+vel_calibracion_consumo)
@@ -189,14 +192,17 @@
 
         function calculoConsumoCombutible(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion, revoluciones_motor, velocidad_calibracion_anterior) {
             // console.log("Pendiente iteración: "+pendiente)
+            
             if (nro_iteracion == 0) {
+                // console.log("Calibración if: "+vel_calibracion_consumo)
                 // let revoluciones_motor = 1800;
                 vel_caida_calibracion = 0;
                 obtenerDatos(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion,revoluciones_motor,vel_caida_calibracion, velocidad_calibracion_anterior) 
 
             } else {
+                // console.log("Calibración else: "+vel_calibracion_consumo)
                 // let revoluciones_motor = 1200;
-                vel_calibracion_consumo = 60;
+                vel_calibracion_consumo = vel_calibracion_consumo_defecto;
                 vel_caida_calibracion = 0;
                 obtenerDatos(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion,revoluciones_motor,vel_caida_calibracion, velocidad_calibracion_anterior) 
             }
