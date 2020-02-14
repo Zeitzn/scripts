@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combustible</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <label>Combustible3</label>
+        
+    </div>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"
+        integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+
+    <script>
+
+        var pendiente;
+        var cambio;
+        //Caja de velocidad
+        var caja_velocidad = [];
+
+        var torques_cambios_calculados = [];
+        var consumos_cambios_calculados = [];
+
+        //Agregar a la lista las velocidaddes del vehículo seleccionado. Ejm. moto
+        //Caja de velocidad id=6
+        caja_velocidad.push(12.80);//Hiw
+        caja_velocidad.push(9.25);//low
+        caja_velocidad.push(6.76);//1
+        caja_velocidad.push(4.90);//2
+        caja_velocidad.push(3.58);//3
+        caja_velocidad.push(2.61);//4
+        caja_velocidad.push(1.89);//5
+        caja_velocidad.push(1.38);//6
+        caja_velocidad.push(1.00);//7       
+        caja_velocidad.push(0.73);//8
+
+        var pendientes_elevacion = [];
+        pendientes_elevacion.push(0.3 / 100);
+        pendientes_elevacion.push(0.5 / 100);
+        pendientes_elevacion.push(0.3 / 100);
+
+        pendientes_elevacion.push(1.2 / 100);
+        // pendientes_elevacion.push(-1.0 / 100);
+        // pendientes_elevacion.push(0.8 / 100);
+        // pendientes_elevacion.push(1.2 / 100);
+
+        var pendiente_maxima = 0;
+        var vel_calibracion = 8;
+
+       
+        //---------------------------------------
+        var torque_resultante;//Torque para comparar con el torque máximo
+
+        for (var i = 0, len = pendientes_elevacion.length; i < len; i++) {
+            if (pendiente_maxima < pendientes_elevacion[i]) {
+                pendiente_maxima = pendientes_elevacion[i];
+            }
+        }
+
+        var velocidad_primera = caja_velocidad[2];
+
+        //Datos de entrada
+
+        var datos_entrada = {
+            "temperatura_ambiente": 27,
+            "elevacion": 1587,
+            "humedad": 68,
+            "peso_carga": 16 * 1650
+        }
+
+        //Datos de calibración
+
+        var datos_calibracion = {
+            "coeficiente_rodadura": 0.025,
+            "densidad_acpm": 850,
+            "densidad_gasolina": 740,
+            "velocidad_diseno_cargado": 60
+        }
+
+        //Volqueta doble troque->posteriormente asignar los valores en una clase
+        var vehiculo = {
+            "nomenclatura": "V3",
+            "descripcion": "Volqueta",
+            "nro_ejes": 3,
+            "nro_llantas": 10,
+            "coeficiente_resistencia_aerodinamica": 0.65,
+            "fact_correcion": 1.14,
+            "area_frontal": 7.00,//m
+            "peso_vacio": 10500,
+            "carga_maxima": 25000,
+            "diametro_llanta": 1.05,
+            "eficiencia_conductor": 0.86,
+            "diferencial": 5.38
+        }
+
+        //Motor
+        //Motor de id=1
+        // var potencia_maxima = 7.3 * 0.7457;
+        var motor = {
+            "potencia_maxima": 370 * 0.7457,
+            "rpm_a_potencia_maxima": 1800,
+            "torque_maximo": Math.round(1350 * 0.454 * 0.3048 * 9.81),//dato de comparación
+            "rpm_a_torque_maximo": 1200,
+            "eficiencia_motor": 90,//%
+            "cilindrada": 10.8,
+            "combustible": "acpm",
+            "relacion_estequiometrica": 14.5,
+            "rpm_en_ralenti": 500
+        }
+
+         //Datos de calibración
+        // var vel_calibracion_consumo = 60;
+        var vel_caida_calibracion = 0;
+        var velocidad_calibracion_anterior = 0;
+        // var revoluciones_motor = 1200;
+        var revoluciones_motor=1800-((motor["rpm_a_potencia_maxima"]-500)/2)
+        console.log("revoluciones promedio motor: "+revoluciones_motor)
+
+        var variables_calibracion={
+            'velocidad':60,
+            'velocidad_anterior':velocidad_calibracion_anterior,
+            // 'revoluciones_motor':1200
+            'revoluciones_motor':revoluciones_motor
+        }
+
+        //1. Calculo de la densidad del aire ambiente y la que entra al motor
+        var temperatura_motor = Math.round(datos_entrada['temperatura_ambiente'] * 1.5);
+        var presion_atmosferica = Math.round((101325 * Math.exp(-0.0289644 * 9.81 * datos_entrada['elevacion'] / (8.31432 * (datos_entrada['temperatura_ambiente'] + 273.15)))));
+        var densidad_aire_ambiente = parseFloat(((0.34848 * presion_atmosferica / 100 - 0.009 * datos_entrada['humedad'] * Math.exp(0.061 * datos_entrada['temperatura_ambiente'])) / (273.15 + datos_entrada['temperatura_ambiente']) * 1000));
+        var densidad_aire_motor = parseFloat(((0.34848 * presion_atmosferica / 100 - 0.009 * datos_entrada['humedad'] * Math.exp(0.061 * temperatura_motor)) / (273.15 + temperatura_motor) * 1000));
+
+        var densidades = {
+            "temperatura_motor": temperatura_motor,
+            "presion_atmosferica": presion_atmosferica,
+            "densidad_aire_ambiente": densidad_aire_ambiente,
+            "densidad_aire_motor": densidad_aire_motor,
+        }
+
+        var esAsignable = pendienteMáximaVehiculo(pendiente_maxima, datos_entrada, datos_calibracion, vehiculo, motor, densidades, 1000, velocidad_primera, vel_calibracion);
+        
+        //Variable para almacenar los resutlados finales
+        var resultados_consumo = [];
+        //Variable para almacenar todos los posibles resultados calibrados
+        var resultados_consumo_temporal = [];
+
+
+//___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+    //Verifico si el vehiculo puede ser asignado verificando la elevación y torque   
+    if (esAsignable) {
+            for (let i = 0; i < pendientes_elevacion.length; i++) {
+                // revoluciones_motor-=100;
+                resultados_consumo_temporal = [];
+                console.log("ITERACION: "+i)
+                for (let j = 0; j < 100; j++) {
+                    // vel_calibracion_consumo=200;
+                    // console.log("Velocidad de calibracion inicial: "+vel_calibracion_consumo)
+                    calculoConsumoCombutible(pendientes_elevacion[i], datos_entrada, datos_calibracion, vehiculo, motor, densidades, 1000, caja_velocidad, variables_calibracion["velocidad"], i, variables_calibracion["revoluciones_motor"],variables_calibracion["velocidad_anterior"]);    
+                    // console.log("Velocidad de calibracion final: "+vel_calibracion_consumo)
+                }
+                resultados_consumo.push(resultados_consumo_temporal[0])
+                console.log(resultados_consumo)
+                
+                // console.log(resultados_consumo_temporal[0])
+            }
+        }
+
+
+        function pendienteMáximaVehiculo(pendiente_maxima, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, cambio, vel_calibracion) {
+            let velocidad_calibracion = vel_calibracion;
+            let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente_maxima)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(velocidad_calibracion / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((velocidad_calibracion) / 3.6) / (distancia_cotas / (velocidad_calibracion / 3.6));
+            let torque_rueda = fuerza_rueda * vehiculo["diametro_llanta"] / 2;
+            let torque_motor = torque_rueda / (cambio * vehiculo["diferencial"]) / (motor["eficiencia_motor"] / 100);
+            let revoluciones_motor = (motor["potencia_maxima"] * 0.97) / motor["torque_maximo"] * 9.55 * 1000;
+            let nr_motor = torque_motor * revoluciones_motor / torque_rueda;
+            let velocidad = Math.PI * vehiculo["diametro_llanta"] * nr_motor * 60 / 1000;
+
+            if (torque_motor > motor["torque_maximo"]) {
+                return false;
+
+            } else {
+                return true;
+            }
+        }
+
+        function calculoConsumoCombutible(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion, revoluciones_motor, velocidad_calibracion_anterior) {
+            // console.log("Pendiente iteración: "+pendiente)
+            if (nro_iteracion == 0) {
+                // let revoluciones_motor = 1800;
+                vel_caida_calibracion = 0;
+                obtenerDatos(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion,revoluciones_motor,vel_caida_calibracion, velocidad_calibracion_anterior) 
+
+            } else {
+                // let revoluciones_motor = 1200;
+                vel_calibracion_consumo = 60;
+                vel_caida_calibracion = 0;
+                obtenerDatos(pendiente, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, caja_velocidad, vel_calibracion_consumo, nro_iteracion,revoluciones_motor,vel_caida_calibracion, velocidad_calibracion_anterior) 
+            }
+        }
+
+        function obtenerDatos(pendiente,datos_entrada,datos_calibracion,vehiculo, motor,densidades,distancia_cotas,caja_velocidad,vel_calibracion_consumo,nro_iteracion,revoluciones_motor,velocidad_caida_calibracion, velocidad_calibracion_anterior) {
+            // console.log("Pendiente en obtener datos: "+pendiente)
+            let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(vel_calibracion_consumo / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((vel_calibracion_consumo - velocidad_caida_calibracion) / 3.6 - velocidad_calibracion_anterior / 3.6) / (distancia_cotas / (vel_calibracion_consumo / 3.6));
+            let torque_rueda = fuerza_rueda * vehiculo["diametro_llanta"] / 2;
+            // let torque_resultante;//Torque para comparar con el torque máximo
+            let velocidad_caida = 0;
+
+            if (pendiente < 0) {
+                // velocidad_caida_calibracion = 0;//Se calibra manualmente en excel
+                velocidad_caida = 0;//Calcular con formula - Acá se usa la velocidad de calibracion anterior
+            }
+
+            let revolucion_llanta_caida = velocidad_caida * 1000 / (Math.PI * 60 * vehiculo["diametro_llanta"]);            
+
+            let torques_cambios_calculados = [];
+            //Calcula los torques en cada velocidad y escoge el máximo posible menor que el torque máximo
+            for (let a = 0; a < caja_velocidad.length; a++) {
+                let torque_motor = torque_rueda / (caja_velocidad[a] * vehiculo["diferencial"]);
+                torques_cambios_calculados.push(parseInt(torque_motor));
+                // console.log(torques_cambios_calculados)
+                // console.log(a)
+                if (torque_motor > motor["torque_maximo"]) {
+                    // console.log(torques_cambios_calculados[a]+' - '+motor['torque_maximo']+ ' - '+a+' - '+(caja_velocidad.length-1))
+                    // if (a == 0 || a >= (caja_velocidad.length - 1)) {
+                    if (a == 0) {
+                    // if (a == 0 || a > (caja_velocidad.length - 1)) {
+                        torque_resultante = torques_cambios_calculados[a];
+                    }
+                     else {
+                        torque_resultante = torques_cambios_calculados[a - 1];
+                    }
+                    // console.log(torque_resultante)
+                    break;
+                }else{
+                    if(a==(caja_velocidad.length-1)){
+                        // console.log(torques_cambios_calculados[a]+' - '+motor['torque_maximo']+ ' - '+a+' - '+(caja_velocidad.length-1))
+                        torque_resultante = torques_cambios_calculados[a];
+                        // console.log(torque_resultante)
+                    }
+                }
+            }
+
+            let nr_motor = 0;
+            if (velocidad_caida >= 60) {
+                nr_motor = 0;
+            } else {
+                nr_motor = torque_resultante * revoluciones_motor / torque_rueda;
+            }
+
+            let nrt = revolucion_llanta_caida + nr_motor;
+            let velocidad = Math.PI * vehiculo['diametro_llanta'] * nrt * 60 / 1000;
+            let pr_kw = torque_rueda * nrt / 9.55 / 1000;
+            let pm_kw = revoluciones_motor * torque_resultante / 9.55 / 1000;
+            let consumo = (((revoluciones_motor * motor["cilindrada"] / (2 * 1000)) * densidades["densidad_aire_motor"] / datos_calibracion["densidad_gasolina"] / motor["relacion_estequiometrica"]) * 60 * 1000) / velocidad
+            let tiempo = 1 / velocidad * 60;
+
+            // console.log(pendiente)
+            // console.log(velocidad_calibracion_anterior)
+
+            var resultados = {
+                "pendiente": pendiente,
+                "fuerza_rueda": fuerza_rueda,
+                "torque_rueda": torque_rueda,
+                "torque_motor": torque_resultante,
+                "revoluciones_motor": revoluciones_motor,
+                "velocidad_caida": velocidad_caida,
+                "velocidad_caida_calibracion": velocidad_caida_calibracion,
+                "revolucion_llanta_caida": revolucion_llanta_caida,
+                "nr_motor": nr_motor,
+                "nrt": nrt,
+                "velocidad": velocidad,
+                "velocidad_calibracion": vel_calibracion_consumo,
+                "pr_kw": pr_kw,
+                "pm_kw": pm_kw,
+                "consumo": consumo,
+                "tiempo": tiempo
+            }
+
+            // console.log(resultados)
+
+            // resultados_consumo.push(resultados)
+
+            if(velocidad<vel_calibracion_consumo){
+                // let vel=((vel_calibracion_consumo-velocidad)/2)+velocidad
+                if(Math.round(velocidad)==Math.round(vel_calibracion_consumo) && Math.round(velocidad)>0 && (revoluciones_motor>500 && revoluciones_motor<motor["rpm_a_potencia_maxima"])){
+                    // console.log(resultados)
+                    resultados_consumo_temporal.push(resultados)
+                    // velocidad_calibracion_anterior=vel_calibracion_consumo
+                    variables_calibracion["velocidad_anterior"]=vel_calibracion_consumo;
+                }
+                variables_calibracion["velocidad"]=velocidad;
+                variables_calibracion["revoluciones_motor"]+=100;
+                // console.log(velocidad)
+                // console.log(vel_calibracion_consumo)
+            }else{
+                if(
+                    (parseInt(velocidad)==parseInt(vel_calibracion_consumo) ||((parseInt(vel_calibracion_consumo)<parseInt(velocidad)) && (parseInt(vel_calibracion_consumo)>(parseInt(velocidad)-5)))) && 
+                    Math.round(velocidad)>0 && (revoluciones_motor>500 && revoluciones_motor<motor["rpm_a_potencia_maxima"])
+                    )
+                    {
+                        // console.log(resultados)
+                        resultados_consumo_temporal.push(resultados)
+                    variables_calibracion["velocidad_anterior"]=vel_calibracion_consumo;
+                }
+                variables_calibracion["velocidad"]=vel_calibracion_consumo;
+                variables_calibracion["revoluciones_motor"]-=100;
+                // console.log("Resultado")
+                // console.log(resultados)
+            }
+
+            // resultados_consumo.push(resultados_consumo_temporal[0])
+
+            // console.log(variables_calibracion["velocidad_anterior"])
+            
+            // console.log(resultados_consumo_temporal[0])
+
+        }
+
+    </script>
+
+</body>
+
+</html>
