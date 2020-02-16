@@ -22,11 +22,11 @@
         var cambio;
         //Caja de velocidad
         var caja_velocidad = [];
-
+        //Almacena temporalmente los torques calculados en cada cambio
         var torques_cambios_calculados = [];
 
-        //Agregar a la lista las velocidaddes del vehículo seleccionado. Ejm. moto
-        //Caja de velocidad id=6
+        //Agrega a la lista las velocidaddes del vehículo seleccionado
+        //Datos de ejemplo
         caja_velocidad.push(12.80);//Hiw
         caja_velocidad.push(9.25);//low
         caja_velocidad.push(6.76);//1
@@ -39,6 +39,7 @@
         caja_velocidad.push(0.73);//8
 
         var pendientes_elevacion = [];
+        //Agrega a la lista las pendientes de la ruta
         pendientes_elevacion.push(5.0 / 100);
         pendientes_elevacion.push(7.0 / 100);
         pendientes_elevacion.push(18.0 / 100);
@@ -162,7 +163,7 @@
         var resultados_consumo = [];
 
         //___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
-        //Verifico si el vehiculo puede ser asignado verificando la elevación y torque   
+        //Verifico si el vehiculo puede ser asignado verificando la elevación y torque, en caso de ser verdadero se calculan los datos 
         if (esAsignable) {
             for (let i = 0; i < pendientes_elevacion.length; i++) {
                 // console.log("Iteración: " + i)
@@ -173,10 +174,11 @@
             console.log(resultados_consumo) 
         }
 
+        //Función para calcular los datos
         function calcular(contador, pendiente, distancia_cotas) {
 
             let velocidad_caida = 0;
-
+            //Si la pendiente es negativa se calcula la velocidad de caida
             if (pendiente < 0) {
                 let valor = 0;
                 try {
@@ -190,12 +192,14 @@
             let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(variables_calibracion["velocidad"] / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((variables_calibracion["velocidad"] - variables_calibracion["velocidad_caida"]) / 3.6 - variables_calibracion["velocidad_anterior"] / 3.6) / (distancia_cotas / (variables_calibracion["velocidad"] / 3.6));
             let torque_rueda = fuerza_rueda * vehiculo["diametro_llanta"] / 2;
 
+            //Si calcula el torque máximo en la primera iteración y el torque final aproximado al converger las velocidades
             if (contador == 0) {
                 torque_resultante = torqueMaximo(torque_rueda)
             } else {
                 torque_resultante = torqueAproximado(torque_rueda)
             }
 
+            //Se determina las revoluciones del motor
             let revoluciones_motor = revolucionesMotor(torque_rueda, torque_resultante, velocidad_caida)
 
             let nr_motor = 0;
@@ -209,7 +213,6 @@
             let revolucion_llanta_caida = velocidad_caida * 1000 / (Math.PI * 60 * vehiculo["diametro_llanta"]);
             let nrt = revolucion_llanta_caida + nr_motor;
 
-            // let velocidad = (contador==0)?Math.PI * vehiculo['diametro_llanta'] * nrt * 60 / 1000:variables_calibracion["velocidad"];
             let velocidad = Math.PI * vehiculo['diametro_llanta'] * nrt * 60 / 1000;
             let pr_kw = torque_rueda * nrt / 9.55 / 1000;
             let pm_kw = revoluciones_motor * torque_resultante / 9.55 / 1000;
@@ -236,26 +239,26 @@
                 "tiempo": tiempo
             }
 
+            //Si las velocidades a converger no son iguales
             if (velocidad != variables_calibracion["velocidad"]) {
+                //Guardamos la velocidad de calibracion
                 variables_calibracion["velocidad"] = velocidad;
+                //Si la pendiente es negativa guardamos la velocidad de caida calculada
                 if (pendiente < 0) {
                     variables_calibracion["velocidad_caida"] = velocidad_caida
                 }
+                //Si es la primera vez que se calcula
                 if (contador == 0) {
-                    // variables_calibracion["velocidad_anterior"] = variables_calibracion["velocidad"]
+                    //Recalculamos los datos con los datos guardados y velocidades convergidas
                     calcular(contador + 1, pendiente, distancia_cotas);
                 } else {
-                    // if(torque_resultante<=motor["torque_maximo"]){
+                    //Si no es la primera iteracion guardamos los resultados
                     resultados_consumo.push(resultados)
+                    //Guardamos la velocidad de calibración para los cálculos de la siguiente pendiente
                     variables_calibracion["velocidad_anterior"] = variables_calibracion["velocidad"]
-                    if (pendiente < 0) {
-                        variables_calibracion["velocidad_caida"] = velocidad_caida
-                    }
-                    // console.log("Velocidad anterior: "+variables_calibracion["velocidad_anterior"])
-                    // console.log("Cambio final: "+numero_cambio)
-                    // }else{
-                    //     //Calcular el cambio en una posicion anterior
-                    //     resultados_consumo.push(resultados)
+
+                    // if (pendiente < 0) {
+                    //     variables_calibracion["velocidad_caida"] = velocidad_caida
                     // }
                 }
 
@@ -266,6 +269,7 @@
             }
         }
 
+        //Función para determinar si el vehiculo puede ser asignado a la ruta
         function pendienteMáximaVehiculo(pendiente_maxima, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, cambio, vel_calibracion) {
             let velocidad_calibracion = vel_calibracion;
             let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente_maxima)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(velocidad_calibracion / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((velocidad_calibracion) / 3.6) / (distancia_cotas / (velocidad_calibracion / 3.6));
@@ -283,6 +287,7 @@
             }
         }
 
+        //Función para calcular el torque máximo luego de converger las velocidades
         function torqueAproximado(torque_rueda) {
             // let torque_motor = torque_rueda / (caja_velocidad[numero_cambio] * vehiculo["diferencial"]);
             let torque_motor = torque_rueda / (caja_velocidad[numero_cambio] * vehiculo["diferencial"]);
@@ -293,6 +298,7 @@
             return torque_motor;
         }
 
+        //Función para calcular el torque máximo por primera vez
         function torqueMaximo(torque_rueda) {
             let torques_cambios_calculados = [];
             //Calcula los torques en cada velocidad y escoge el máximo posible menor que el torque máximo
