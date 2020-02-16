@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combustible</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <label>Combustible3</label>
+
+    </div>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"
+        integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+
+    <script>
+
+        var pendiente;
+        var cambio;
+        //Caja de velocidad
+        var caja_velocidad = [];
+
+        var torques_cambios_calculados = [];
+
+        //Agregar a la lista las velocidaddes del vehículo seleccionado. Ejm. moto
+        //Caja de velocidad id=6
+        caja_velocidad.push(12.80);//Hiw
+        caja_velocidad.push(9.25);//low
+        caja_velocidad.push(6.76);//1
+        caja_velocidad.push(4.90);//2
+        caja_velocidad.push(3.58);//3
+        caja_velocidad.push(2.61);//4
+        caja_velocidad.push(1.89);//5
+        caja_velocidad.push(1.38);//6
+        caja_velocidad.push(1.00);//7       
+        caja_velocidad.push(0.73);//8
+
+        var pendientes_elevacion = [];
+        pendientes_elevacion.push(5.0 / 100);
+        pendientes_elevacion.push(7.0 / 100);
+        pendientes_elevacion.push(18.0 / 100);
+        pendientes_elevacion.push(1.2 / 100);
+        pendientes_elevacion.push(-2.0 / 100);
+        pendientes_elevacion.push(0.8 / 100);
+        pendientes_elevacion.push(1.2 / 100);
+
+        var pendiente_maxima = 0;
+        var vel_calibracion = 8;
+
+
+        //---------------------------------------
+        var torque_resultante;//Torque para comparar con el torque máximo
+        var distancia_cotas = 1000;
+        var numero_cambio = 0;
+        var torque_grafico;
+
+        for (var i = 0, len = pendientes_elevacion.length; i < len; i++) {
+            if (pendiente_maxima < pendientes_elevacion[i]) {
+                pendiente_maxima = pendientes_elevacion[i];
+            }
+        }
+
+        var velocidad_primera = caja_velocidad[2];
+
+        //Datos de entrada
+
+        var datos_entrada = {
+            "temperatura_ambiente": 27,
+            "elevacion": 1587,
+            "humedad": 68,
+            "peso_carga": 16 * 1650
+        }
+
+        //Datos de calibración
+
+        var datos_calibracion = {
+            "coeficiente_rodadura": 0.025,
+            "densidad_acpm": 850,
+            "densidad_gasolina": 740,
+            "velocidad_diseno_cargado": 60
+        }
+
+        //Volqueta doble troque->posteriormente asignar los valores en una clase
+        var vehiculo = {
+            "nomenclatura": "V3",
+            "descripcion": "Volqueta",
+            "nro_ejes": 3,
+            "nro_llantas": 10,
+            "coeficiente_resistencia_aerodinamica": 0.65,
+            "fact_correcion": 1.14,
+            "area_frontal": 7.00,//m
+            "peso_vacio": 10500,
+            "carga_maxima": 25000,
+            "diametro_llanta": 1.05,
+            "eficiencia_conductor": 0.86,
+            "diferencial": 5.38
+        }
+
+        //Motor
+        var motor = {
+            "potencia_maxima": 370 * 0.7457,
+            "rpm_a_potencia_maxima": 1800,
+            "torque_maximo": Math.round(1350 * 0.454 * 0.3048 * 9.81),//dato de comparación
+            "rpm_a_torque_maximo": 1200,
+            "eficiencia_motor": 90,//%
+            "cilindrada": 10.8,
+            "combustible": "acpm",
+            "relacion_estequiometrica": 14.5,
+            "rpm_en_ralenti": 500
+        }
+
+        //Calculo de puntos
+        //Punto 4
+        var rpm4 = motor["rpm_a_potencia_maxima"]
+        var pkw4 = motor["potencia_maxima"]
+        var tnm4 = pkw4 / rpm4 * 9.55 * 1000
+
+        //Punto 3
+        var tnm3 = motor["torque_maximo"]
+        var pkw3 = motor["potencia_maxima"] * 0.97
+        var rpm3 = pkw3 / tnm3 * 9.55 * 1000
+
+        //Punto 2
+        var tnm2 = motor["torque_maximo"]
+        var rpm2 = motor["rpm_a_torque_maximo"]
+        var pkw2 = tnm2 * rpm2 / 9.55 / 1000
+
+        //Punto 1
+        // var rpm1 = 900
+        var rpm1 = motor["rpm_en_ralenti"]
+        var tnm1 = tnm4
+        var pkw1 = tnm1 * rpm1 / 9.55 / 1000
+
+        //Datos de calibración
+        var vel_caida_calibracion = 0;
+        var velocidad_calibracion_anterior = 0;
+        var variables_calibracion = {
+            'velocidad': datos_calibracion["velocidad_diseno_cargado"],
+            'velocidad_anterior': velocidad_calibracion_anterior,
+            'velocidad_caida': vel_caida_calibracion
+        }
+
+        //1. Calculo de la densidad del aire ambiente y la que entra al motor
+        var temperatura_motor = Math.round(datos_entrada['temperatura_ambiente'] * 1.5);
+        var presion_atmosferica = Math.round((101325 * Math.exp(-0.0289644 * 9.81 * datos_entrada['elevacion'] / (8.31432 * (datos_entrada['temperatura_ambiente'] + 273.15)))));
+        var densidad_aire_ambiente = parseFloat(((0.34848 * presion_atmosferica / 100 - 0.009 * datos_entrada['humedad'] * Math.exp(0.061 * datos_entrada['temperatura_ambiente'])) / (273.15 + datos_entrada['temperatura_ambiente']) * 1000));
+        var densidad_aire_motor = parseFloat(((0.34848 * presion_atmosferica / 100 - 0.009 * datos_entrada['humedad'] * Math.exp(0.061 * temperatura_motor)) / (273.15 + temperatura_motor) * 1000));
+
+        var densidades = {
+            "temperatura_motor": temperatura_motor,
+            "presion_atmosferica": presion_atmosferica,
+            "densidad_aire_ambiente": densidad_aire_ambiente,
+            "densidad_aire_motor": densidad_aire_motor,
+        }
+
+        var esAsignable = pendienteMáximaVehiculo(pendiente_maxima, datos_entrada, datos_calibracion, vehiculo, motor, densidades, 1000, velocidad_primera, vel_calibracion);
+
+        //Variable para almacenar los resutlados finales
+        var resultados_consumo = [];
+
+        //___________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+        //Verifico si el vehiculo puede ser asignado verificando la elevación y torque   
+        if (esAsignable) {
+            for (let i = 0; i < pendientes_elevacion.length; i++) {
+                // console.log("Iteración: " + i)
+                variables_calibracion['velocidad'] = datos_calibracion["velocidad_diseno_cargado"];
+                variables_calibracion['velocidad_caida'] = 0;
+                calcular(0, pendientes_elevacion[i], distancia_cotas);
+            }
+            console.log(resultados_consumo) 
+        }
+
+        function calcular(contador, pendiente, distancia_cotas) {
+
+            let velocidad_caida = 0;
+
+            if (pendiente < 0) {
+                let valor = 0;
+                try {
+                    valor = Math.pow((2 * distancia_cotas * (9.81 * Math.sin(Math.atan(-pendiente)) - ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * datos_calibracion["coeficiente_rodadura"] * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow((variables_calibracion["velocidad_caida"] / 3.6), 2)) / (datos_entrada["peso_carga"] + vehiculo["peso_vacio"])) + Math.pow((variables_calibracion["velocidad_anterior"] / 3.6), 2)), 0.5) * 3.6
+                } catch (error) {
+                    valor = 0
+                }
+                velocidad_caida = Math.min(60, valor)
+            }
+
+            let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(variables_calibracion["velocidad"] / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((variables_calibracion["velocidad"] - variables_calibracion["velocidad_caida"]) / 3.6 - variables_calibracion["velocidad_anterior"] / 3.6) / (distancia_cotas / (variables_calibracion["velocidad"] / 3.6));
+            let torque_rueda = fuerza_rueda * vehiculo["diametro_llanta"] / 2;
+
+            if (contador == 0) {
+                torque_resultante = torqueMaximo(torque_rueda)
+            } else {
+                torque_resultante = torqueAproximado(torque_rueda)
+            }
+
+            let revoluciones_motor = revolucionesMotor(torque_rueda, torque_resultante, velocidad_caida)
+
+            let nr_motor = 0;
+            if (velocidad_caida >= 60) {
+                nr_motor = 0;
+            }
+            else {
+                nr_motor = torque_resultante * revoluciones_motor / torque_rueda;
+            }
+
+            let revolucion_llanta_caida = velocidad_caida * 1000 / (Math.PI * 60 * vehiculo["diametro_llanta"]);
+            let nrt = revolucion_llanta_caida + nr_motor;
+
+            // let velocidad = (contador==0)?Math.PI * vehiculo['diametro_llanta'] * nrt * 60 / 1000:variables_calibracion["velocidad"];
+            let velocidad = Math.PI * vehiculo['diametro_llanta'] * nrt * 60 / 1000;
+            let pr_kw = torque_rueda * nrt / 9.55 / 1000;
+            let pm_kw = revoluciones_motor * torque_resultante / 9.55 / 1000;
+
+            let consumo = ((((revoluciones_motor<=motor["rpm_en_ralenti"]?motor["rpm_en_ralenti"]:revoluciones_motor) * motor["cilindrada"] / (2 * 1000)) * densidades["densidad_aire_motor"] / datos_calibracion["densidad_gasolina"] / motor["relacion_estequiometrica"]) * 60 * 1000) / velocidad
+            let tiempo = 1 / velocidad * 60;
+
+            var resultados = {
+                "pendiente": pendiente,
+                "fuerza_rueda": fuerza_rueda,
+                "torque_rueda": torque_rueda,
+                "torque_motor": torque_resultante,
+                "revoluciones_motor": revoluciones_motor,
+                "velocidad_caida": velocidad_caida,
+                "velocidad_caida_calibracion": variables_calibracion["velocidad_caida"],
+                "revolucion_llanta_caida": revolucion_llanta_caida,
+                "nr_motor": nr_motor,
+                "nrt": nrt,
+                "velocidad": velocidad,
+                "velocidad_calibracion": variables_calibracion["velocidad"],
+                "pr_kw": pr_kw,
+                "pm_kw": pm_kw,
+                "consumo": consumo,
+                "tiempo": tiempo
+            }
+
+            if (velocidad != variables_calibracion["velocidad"]) {
+                variables_calibracion["velocidad"] = velocidad;
+                if (pendiente < 0) {
+                    variables_calibracion["velocidad_caida"] = velocidad_caida
+                }
+                if (contador == 0) {
+                    // variables_calibracion["velocidad_anterior"] = variables_calibracion["velocidad"]
+                    calcular(contador + 1, pendiente, distancia_cotas);
+                } else {
+                    // if(torque_resultante<=motor["torque_maximo"]){
+                    resultados_consumo.push(resultados)
+                    variables_calibracion["velocidad_anterior"] = variables_calibracion["velocidad"]
+                    if (pendiente < 0) {
+                        variables_calibracion["velocidad_caida"] = velocidad_caida
+                    }
+                    // console.log("Velocidad anterior: "+variables_calibracion["velocidad_anterior"])
+                    // console.log("Cambio final: "+numero_cambio)
+                    // }else{
+                    //     //Calcular el cambio en una posicion anterior
+                    //     resultados_consumo.push(resultados)
+                    // }
+                }
+
+            }
+            else {
+                resultados_consumo.push(resultados)
+                variables_calibracion["velocidad_anterior"] = variables_calibracion["velocidad"]
+            }
+        }
+
+        function pendienteMáximaVehiculo(pendiente_maxima, datos_entrada, datos_calibracion, vehiculo, motor, densidades, distancia_cotas, cambio, vel_calibracion) {
+            let velocidad_calibracion = vel_calibracion;
+            let fuerza_rueda = ((datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * (datos_calibracion["coeficiente_rodadura"] + Math.sin(Math.atan(pendiente_maxima)))) * 9.81 + 1 / 2 * densidades["densidad_aire_ambiente"] / 1000 * vehiculo["coeficiente_resistencia_aerodinamica"] * vehiculo["fact_correcion"] * vehiculo["area_frontal"] * Math.pow(velocidad_calibracion / 3.6, 2) + (datos_entrada["peso_carga"] + vehiculo["peso_vacio"]) * ((velocidad_calibracion) / 3.6) / (distancia_cotas / (velocidad_calibracion / 3.6));
+            let torque_rueda = fuerza_rueda * vehiculo["diametro_llanta"] / 2;
+            let torque_motor = torque_rueda / (cambio * vehiculo["diferencial"]) / (motor["eficiencia_motor"] / 100);
+            let revoluciones_motor = (motor["potencia_maxima"] * 0.97) / motor["torque_maximo"] * 9.55 * 1000;
+            let nr_motor = torque_motor * revoluciones_motor / torque_rueda;
+            let velocidad = Math.PI * vehiculo["diametro_llanta"] * nr_motor * 60 / 1000;
+
+            if (torque_motor > motor["torque_maximo"]) {
+                return false;
+
+            } else {
+                return true;
+            }
+        }
+
+        function torqueAproximado(torque_rueda) {
+            // let torque_motor = torque_rueda / (caja_velocidad[numero_cambio] * vehiculo["diferencial"]);
+            let torque_motor = torque_rueda / (caja_velocidad[numero_cambio] * vehiculo["diferencial"]);
+            if (torque_motor < 0) {
+                torque_motor = torque_rueda / (caja_velocidad[(caja_velocidad.length)-1] * vehiculo["diferencial"]);
+                numero_cambio = (caja_velocidad.length)-1;
+            }
+            return torque_motor;
+        }
+
+        function torqueMaximo(torque_rueda) {
+            let torques_cambios_calculados = [];
+            //Calcula los torques en cada velocidad y escoge el máximo posible menor que el torque máximo
+            for (let a = 0; a < caja_velocidad.length; a++) {
+                let torque_motor = torque_rueda / (caja_velocidad[a] * vehiculo["diferencial"]);
+                torques_cambios_calculados.push(parseInt(torque_motor));
+                if (torque_motor > motor["torque_maximo"]) {
+                    if (a == 0) {
+                        torque_resultante = torques_cambios_calculados[a];
+                        numero_cambio = a;
+                    }
+                    else {
+                        torque_resultante = torques_cambios_calculados[a - 1];
+                        numero_cambio = a - 1;
+                    }
+                    break;
+                } else {
+                    if (a == (caja_velocidad.length - 1)) {
+                        torque_resultante = torques_cambios_calculados[a];
+                    }
+                }
+            }
+
+            return torque_resultante;
+        }
+
+        function revolucionesMotor(torqueLlanta, torqueMotor, vCaida) {
+
+            let tm4 = tnm4
+            let tm3 = tnm3
+            let tm2 = tnm2
+            let tm1 = tnm1
+
+            let nm1 = rpm1
+            let nm2 = rpm2
+            let nm3 = rpm3
+            let nm4 = rpm4
+
+
+            let nm = 1000 * torqueLlanta / (torqueMotor * Math.PI * vehiculo["diametro_llanta"] * 60) * (datos_calibracion['velocidad_diseno_cargado'] - vCaida)
+            nm = Math.min(1800, nm)
+            // console.log(nm)
+            // console.log("nm: "+nm)
+            // console.log("nm1: "+nm1)
+            // console.log("nm2: "+nm2)
+            // console.log("nm3: "+nm3)
+            // console.log("nm4: "+nm4)
+
+            let torque_grafico;
+            if (nm < nm2) {
+                torque_grafico = (tm2 - tm1) / (nm2 - nm1) * (nm - nm1) + tm1;
+            }
+            else if (nm >= nm2 && nm < nm3) {
+                torque_grafico = (tm4 - tm3) / (nm4 - nm3) * (nm - nm3) + tm3;
+            }
+            else if (nm >= nm3) {
+                torque_grafico = (tm4 - tm3) / (nm4 - nm3) * (nm - nm3) + tm3;
+            }
+
+            let nm_grafico;
+            if (torqueMotor > torque_grafico) {
+                if (nm < nm2) {
+                    nm_grafico = (nm2 - nm1) / (tm2 - tm1) * (torqueMotor - tm1) + nm1;
+                }
+                else if (nm >= nm2 && nm < nm3) {
+                    nm_grafico = nm;
+                }
+                else if (nm >= nm3) {
+                    nm_grafico = (nm4 - nm3) / (tm4 - tm3) * (torqueMotor - tm3) + nm3;
+                }
+            }
+
+            if (nm > nm4) {
+                nm_grafico = nm4
+            }
+            return nm;
+        }
+    </script>
+
+</body>
+
+</html>
